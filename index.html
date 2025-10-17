@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>iland6 (fixed+sequence) — VR Puzzle Extrude</title>
+<style>
+  :root{ --bg:#0b1220; --panel:#0f1722; --fg:#e6eef6; --muted:#9fb0c7; --accent:#4fc3ff; }
+  html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans;}
+  #ui{position:fixed; left:12px; top:12px; width:380px; max-height:calc(100vh - 24px); overflow:auto; background:var(--panel); border:1px solid #173041; padding:12px; border-radius:10px; box-shadow:0 6px 18px #0009; z-index:60}
+  label{display:block; font-size:13px; color:var(--muted); margin-top:8px}
+  input[type=file]{width:100%}
+  button{margin-top:8px; padding:8px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:600}
+  button.primary{background:linear-gradient(180deg,var(--accent),#0d8fb8); color:#05202b}
+  button.ghost{background:#111827; color:var(--fg); border:1px solid #24323f}
+  .row{display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap}
+  .small{font-size:12px; color:var(--muted)}
+  #canvasContainer{width:100%; height:100vh; overflow:hidden}
+  input[type=range]{width:220px}
+  .sliderRow{display:flex; gap:8px; align-items:center}
+  #piecesList{margin-top:8px; display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; padding:6px; border-radius:6px; background:#081018; border:1px solid #16202a}
+  .pieceRow{display:flex; gap:8px; align-items:center; padding:6px; border-radius:8px; border:1px solid #20303f; background:#0a131c}
+  .thumbSmall{width:56px; height:56px; object-fit:cover; background:#000; border-radius:6px; border:1px solid #20303f}
+  .pieceMeta{flex:1; font-size:12px; color:var(--muted)}
+  .pieceBtns{display:flex; gap:6px; align-items:center}
+  .orderBadge{min-width:22px; text-align:center; font-weight:700; color:#05202b; background:linear-gradient(180deg,var(--accent),#0d8fb8); border-radius:6px; padding:2px 6px}
+  #enterVrBtn{position:fixed; right:12px; bottom:12px; z-index:61; padding:10px 12px; border-radius:8px; background:linear-gradient(180deg,var(--accent),#0d8fb8); color:#05202b; font-weight:700; cursor:pointer; border:none}
+  .webxr-button { position: fixed !important; right:12px !important; bottom:72px !important; z-index:62 !important; }
+  .spacer{flex:1}
+</style>
+</head>
+<body>
+  <div id="ui" aria-label="Controls">
+    <h3 style="margin:0 0 6px 0">iland6 — VR Puzzle Extrude (sequence)</h3>
+    <div class="small">최대 20개 조각 업로드 + 순차/랜덤 재생 + VR 버튼</div>
+
+    <label>원본 이미지 업로드</label>
+    <input id="baseFile" type="file" accept="image/*">
+
+    <label>퍼즐 조각 업로드 (최대 20) — 여러 개 선택 가능, 기존 목록에 추가됩니다</label>
+    <input id="piecesFiles" type="file" accept="image/*" multiple>
+
+    <div class="row">
+      <button id="btnPlaceAll" class="ghost">자동 정렬</button>
+      <button id="btnClear" class="ghost">조각 모두 삭제</button>
+      <div class="spacer"></div>
+      <div class="small">업로드된 조각 (최대 20)</div>
+    </div>
+
+    <div id="piecesList" aria-live="polite"></div>
+
+    <label>Extrusion / Fade 설정</label>
+    <div class="sliderRow">
+      <div class="small">총 깊이 (world units)</div>
+      <input id="popDepth" type="range" min="0.02" max="1.2" step="0.01" value="0.14">
+      <div id="popDepthVal" class="small">0.14</div>
+    </div>
+
+    <div class="sliderRow">
+      <div class="small">Contour 샘플 스케일</div>
+      <input id="contourScale" type="range" min="32" max="512" step="8" value="256">
+      <div id="contourScaleVal" class="small">256</div>
+    </div>
+
+    <div class="sliderRow">
+      <div class="small">Fade duration (초)</div>
+      <input id="fadeDuration" type="range" min="0.1" max="2.5" step="0.05" value="0.5">
+      <div id="fadeDurationVal" class="small">0.50s</div>
+    </div>
+
+    <label>재생 옵션</label>
+    <div class="row">
+      <button id="btnPlaySeq" class="primary">Play Sequence</button>
+      <label class="small" style="display:flex; align-items:center; gap:6px; margin:0 6px">
+        <input id="seqLoop" type="checkbox" checked> Loop
+      </label>
+      <div class="sliderRow" style="margin-left:4px">
+        <div class="small">Interval(초)</div>
+        <input id="seqInterval" type="range" min="0.1" max="5" step="0.1" value="0.6">
+        <div id="seqIntervalVal" class="small">0.60s</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="btnPlayRandom" class="ghost">Play Random</button>
+      <div class="sliderRow" style="margin-left:4px">
+        <div class="small">Random 최소 간격(초)</div>
+        <input id="minInterval" type="range" min="0.1" max="5" step="0.1" value="0.6">
+        <div id="minIntervalVal" class="small">0.60s</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <button id="btnStop" class="ghost">Stop</button>
+    </div>
+
+    <div class="small" style="margin-top:10px">테스트 시 콘솔 오류가 있으면 그대로 복사해서 보내 주세요 (DevTools → Console).</div>
+  </div>
+
+  <button id="enterVrBtn">Enter VR</button>
+  <div id="canvasContainer"></div>
+
+<script type="module">
+import * as THREE from 'https://unpkg.com/three@0.150.0/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three@0.150.0/examples/jsm/controls/OrbitControls.js';
+import { VRButton } from 'https://unpkg.com/three@0.150.0/examples/jsm/webxr/VRButton.js';
+
+const container = document.getElementById('canvasContainer');
+const piecesListEl = document.getElementById('piecesList');
+const enterVrBtn = document.getElementById('enterVrBtn');
+
+let renderer, scene, camera, controls;
+let baseMesh = null;
+/** pieces: [{id, group, frontPlane, extrudeMesh, texture, pixelW, pixelH, filename, depthWorld, thumbURL}] */
+let pieces = [];
+let animRunning = false;
+let xrSession = null;
+
+initThree();
+hookUI();
+checkWebXRAvailability();
+
+/* ---------- Three init ---------- */
+function initThree(){
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.xr.enabled = true;
+  container.appendChild(renderer.domElement);
+
+  try {
+    const btn = VRButton.createButton(renderer);
+    btn.classList.add('webxr-button');
+    document.body.appendChild(btn);
+  } catch(e){ console.warn('VRButton not created:', e); }
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0a0d10);
+
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 2000);
+  camera.position.set(0,0,1.2);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.target.set(0,0,0);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x222244, 0.9); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(0.5,1,0.5); scene.add(dir);
+
+  window.addEventListener('resize', onWindowResize);
+  renderer.setAnimationLoop(()=>{ controls.update(); renderer.render(scene, camera); });
+}
+
+async function checkWebXRAvailability(){
+  if(navigator.xr && navigator.xr.isSessionSupported){
+    try{
+      const supported = await navigator.xr.isSessionSupported('immersive-vr');
+      enterVrBtn.disabled = !supported;
+      if(!supported) console.info('WebXR immersive-vr not supported on this device/browser.');
+    }catch(e){ enterVrBtn.disabled = true; console.warn('XR check failed', e); }
+  } else { enterVrBtn.disabled = true; console.info('WebXR API not available.'); }
+}
+
+/* ---------- Image helpers ---------- */
+async function loadImageBitmap(file){
+  try { return await createImageBitmap(file); }
+  catch(e){
+    return new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = ()=> resolve(createImageBitmap(img));
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+}
+
+async function setBaseImage(file){
+  try{
+    const bmp = await loadImageBitmap(file);
+    if(baseMesh){
+      scene.remove(baseMesh);
+      disposeMaterial(baseMesh.material);
+      baseMesh.geometry.dispose();
+      baseMesh = null;
+    }
+    const tex = new THREE.CanvasTexture(bmp); tex.encoding = THREE.sRGBEncoding; tex.needsUpdate = true;
+    const W = bmp.width, H = bmp.height;
+    const worldLong = 1.6;
+    const scale = worldLong / Math.max(W,H);
+    const geo = new THREE.PlaneGeometry(W*scale, H*scale);
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness:0.85, metalness:0.0, side: THREE.DoubleSide });
+    baseMesh = new THREE.Mesh(geo, mat);
+    baseMesh.userData = { pixelWidth: W, pixelHeight: H, worldWidth: W*scale, worldHeight: H*scale, scale };
+    scene.add(baseMesh);
+    controls.target.set(0,0,0);
+    const fitZ = Math.max(W*scale, H*scale) / Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+    camera.position.set(0,0, Math.max(0.8, fitZ*0.7));
+    controls.update();
+    console.log('Base set', file.name, W, H);
+  }catch(err){ console.error('setBaseImage error', err); alert('원본 이미지 로드 실패 — 콘솔을 확인하세요.'); }
+}
+
+async function addPieceFile(file){
+  if(pieces.length >= 20){ alert('최대 20개 조각입니다. 일부를 삭제하세요.'); return; }
+  console.log('addPieceFile:', file.name);
+  try{
+    const bmp = await loadImageBitmap(file);
+    const tex = new THREE.CanvasTexture(bmp); tex.encoding = THREE.sRGBEncoding; tex.needsUpdate = true;
+
+    // world size (원본 기준 정렬 시 같은 픽셀 크기면 전체에 딱 맞게)
+    let worldW = 0.5, worldH = 0.5;
+    if(baseMesh){
+      const bpw = baseMesh.userData.pixelWidth, bph = baseMesh.userData.pixelHeight;
+      worldW = (bmp.width / bpw) * baseMesh.userData.worldWidth;
+      worldH = (bmp.height / bph) * baseMesh.userData.worldHeight;
+    } else {
+      const long = Math.max(bmp.width, bmp.height), s = 1.0/long;
+      worldW = bmp.width * s; worldH = bmp.height * s;
+    }
+
+    const contourScale = parseInt(document.getElementById('contourScale').value,10) || 256;
+    const maskInfo = alphaMaskToContour(bmp, contourScale);
+
+    let extrudeMesh = null;
+    let depthWorld = 0;
+    if(maskInfo && maskInfo.contours.length){
+      let main = maskInfo.contours[0];
+      let maxA = Math.abs(polygonArea(main));
+      for(const c of maskInfo.contours){ const a = Math.abs(polygonArea(c)); if(a>maxA){ maxA=a; main=c; } }
+      const simplified = simplifyRDP(main, 2.0);
+      const pxW = bmp.width, pxH = bmp.height;
+      const pxToWorld = baseMesh ? baseMesh.userData.scale : (Math.max(worldW, worldH) / Math.max(pxW, pxH));
+      const pts = simplified.map(([px,py])=> new THREE.Vector2((px-pxW/2)*pxToWorld, -(py-pxH/2)*pxToWorld));
+      const shape = new THREE.Shape(pts);
+      depthWorld = parseFloat(document.getElementById('popDepth').value) * (baseMesh ? baseMesh.userData.worldWidth : 1);
+      const extrudeSettings = { depth: depthWorld, bevelEnabled:false, curveSegments: Math.max(1, Math.floor(pts.length/8)) };
+      const extrudeGeo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      extrudeMesh = new THREE.Mesh(extrudeGeo, new THREE.MeshStandardMaterial({ color:0x111111, roughness:0.95 }));
+    } else { console.warn('No contour found for', file.name); }
+
+    const planeGeo = new THREE.PlaneGeometry(worldW, worldH);
+    const frontMat = new THREE.MeshStandardMaterial({ map: tex, transparent:true, alphaTest:0.02, side: THREE.DoubleSide });
+    const frontPlane = new THREE.Mesh(planeGeo, frontMat);
+    frontPlane.position.z = 0.001;
+
+    const group = new THREE.Group();
+    if(extrudeMesh) group.add(extrudeMesh);
+    group.add(frontPlane);
+    group.position.set(0,0, 0.001 + pieces.length*0.0004);
+
+    // 썸네일 생성 & 엔트리 등록
+    const thumbURL = makeThumbDataURL(bmp, 128);
+    const entry = { id: cryptoRandomId(), group, frontPlane, extrudeMesh, texture: tex, pixelW: bmp.width, pixelH: bmp.height, filename: file.name, depthWorld, thumbURL };
+    pieces.push(entry);
+    scene.add(group);
+    addPieceListItem(entry);
+    refreshOrderBadges();
+    console.log('piece added:', file.name);
+  }catch(err){ console.error('addPieceFile error', err); alert('조각 처리 중 오류 — 콘솔 확인'); }
+}
+
+/* ---------- marching squares & helpers ---------- */
+function alphaMaskToContour(bitmap, targetSize=256){
+  const srcW = bitmap.width, srcH = bitmap.height;
+  const scale = Math.max(1, Math.max(srcW, srcH) / targetSize);
+  const w = Math.max(8, Math.round(srcW / scale));
+  const h = Math.max(8, Math.round(srcH / scale));
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx = c.getContext('2d'); ctx.clearRect(0,0,w,h);
+  ctx.drawImage(bitmap,0,0,w,h);
+  const img = ctx.getImageData(0,0,w,h).data;
+  const mask = new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++) mask[i] = img[i*4+3] > 127 ? 1 : 0;
+  const contours = marchingSquares(mask, w, h);
+  const scaleBackX = srcW / w, scaleBackY = srcH / h;
+  const contoursScaled = contours.map(poly => poly.map(([x,y]) => [ x * scaleBackX, y * scaleBackY ]));
+  return { width: srcW, height: srcH, maskGrid: mask, contours: contoursScaled };
+}
+function marchingSquares(mask, w, h){
+  const segments=[];
+  for(let y=0;y<h-1;y++){
+    for(let x=0;x<w-1;x++){
+      const i0 = mask[y*w + x] ? 1 : 0;
+      const i1 = mask[y*w + x+1] ? 1 : 0;
+      const i2 = mask[(y+1)*w + x+1] ? 1 : 0;
+      const i3 = mask[(y+1)*w + x] ? 1 : 0;
+      const cell = (i0<<3)|(i1<<2)|(i2<<1)|(i3<<0);
+      const topMid=[x+0.5,y], rightMid=[x+1,y+0.5], bottomMid=[x+0.5,y+1], leftMid=[x,y+0.5];
+      switch(cell){
+        case 1: segments.push([bottomMid,leftMid]); break;
+        case 2: segments.push([rightMid,bottomMid]); break;
+        case 3: segments.push([rightMid,leftMid]); break;
+        case 4: segments.push([topMid,rightMid]); break;
+        case 5: segments.push([topMid,leftMid]); segments.push([bottomMid,rightMid]); break;
+        case 6: segments.push([topMid,bottomMid]); break;
+        case 7: segments.push([topMid,leftMid]); break;
+        case 8: segments.push([leftMid,topMid]); break;
+        case 9: segments.push([bottomMid,topMid]); break;
+        case 10: segments.push([leftMid,rightMid]); segments.push([topMid,bottomMid]); break;
+        case 11: segments.push([rightMid,topMid]); break;
+        case 12: segments.push([leftMid,rightMid]); break;
+        case 13: segments.push([bottomMid,rightMid]); break;
+        case 14: segments.push([leftMid,bottomMid]); break;
+        default: break;
+      }
+    }
+  }
+  const used = new Array(segments.length).fill(false);
+  const contours = [];
+  for(let i=0;i<segments.length;i++){
+    if(used[i]) continue;
+    used[i]=true;
+    let [a,b] = segments[i].map(p=>p.slice());
+    const poly=[a.slice(), b.slice()];
+    let extended=true;
+    while(extended){
+      extended=false;
+      const last = poly[poly.length-1];
+      for(let j=0;j<segments.length;j++){
+        if(used[j]) continue;
+        const [c,d]=segments[j];
+        if(approxEqual(last,c)){ poly.push(d.slice()); used[j]=true; extended=true; break; }
+        if(approxEqual(last,d)){ poly.push(c.slice()); used[j]=true; extended=true; break; }
+      }
+    }
+    extended=true;
+    while(extended){
+      extended=false;
+      const first = poly[0];
+      for(let j=0;j<segments.length;j++){
+        if(used[j]) continue;
+        const [c,d]=segments[j];
+        if(approxEqual(first,d)){ poly.unshift(c.slice()); used[j]=true; extended=true; break; }
+        if(approxEqual(first,c)){ poly.unshift(d.slice()); used[j]=true; extended=true; break; }
+      }
+    }
+    if(poly.length>2){ if(approxEqual(poly[0], poly[poly.length-1])) poly.pop(); contours.push(poly); }
+  }
+  return contours;
+}
+function approxEqual(a,b,eps=1e-6){ return Math.abs(a[0]-b[0])<eps && Math.abs(a[1]-b[1])<eps; }
+function polygonArea(poly){ let a=0; for(let i=0;i<poly.length;i++){ const [x1,y1]=poly[i]; const [x2,y2]=poly[(i+1)%poly.length]; a += (x1*y2 - x2*y1);} return a/2; }
+function simplifyRDP(points, eps){ if(points.length<3) return points.slice(); const info=findFarthest(points); if(info.maxDist>eps){ const r1=simplifyRDP(points.slice(0,info.index+1),eps); const r2=simplifyRDP(points.slice(info.index),eps); return r1.slice(0,r1.length-1).concat(r2);} return [points[0], points[points.length-1]]; function findFarthest(pts){ const s=pts[0], e=pts[pts.length-1]; let max=-1, idx=-1; for(let i=1;i<pts.length-1;i++){ const d=pointLineDistance(pts[i],s,e); if(d>max){max=d;idx=i;} } return {maxDist:max,index:idx}; function pointLineDistance(p,a,b){ const x0=p[0],y0=p[1],x1=a[0],y1=a[1],x2=b[0],y2=b[1]; const num=Math.abs((x2-x1)*(y1-y0) - (x1-x0)*(y2-y1)); const den=Math.hypot(x2-x1,y2-y1)||1; return num/den;} }
+
+/* ---------- UI list helpers ---------- */
+function makeThumbDataURL(bitmap, targetW=128){
+  const sx = targetW;
+  const sy = Math.max(1, Math.round(bitmap.height*(targetW/bitmap.width)));
+  const c=document.createElement('canvas'); c.width=sx; c.height=sy;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,sx,sy); ctx.drawImage(bitmap,0,0,sx,sy);
+  return c.toDataURL();
+}
+
+function addPieceListItem(entry){
+  const div=document.createElement('div'); div.className='pieceRow'; div.id='piece-'+entry.id;
+
+  const order=document.createElement('div'); order.className='orderBadge'; order.textContent='—';
+  const img=document.createElement('img'); img.className='thumbSmall'; img.src=entry.thumbURL;
+
+  const meta=document.createElement('div'); meta.className='pieceMeta';
+  meta.innerHTML=`<div style="font-weight:700">${entry.filename}</div><div class="small">${entry.pixelW}×${entry.pixelH}</div>`;
+
+  const btns=document.createElement('div'); btns.className='pieceBtns';
+
+  const upBtn=document.createElement('button'); upBtn.textContent='↑'; upBtn.className='ghost';
+  upBtn.addEventListener('click', ()=> movePiece(entry.id, -1));
+
+  const downBtn=document.createElement('button'); downBtn.textContent='↓'; downBtn.className='ghost';
+  downBtn.addEventListener('click', ()=> movePiece(entry.id, +1));
+
+  const alignBtn=document.createElement('button'); alignBtn.textContent='Align'; alignBtn.className='ghost';
+  alignBtn.addEventListener('click', ()=>{
+    if(!baseMesh) return alert('원본 업로드 필요');
+    if(entry.pixelW===baseMesh.userData.pixelWidth && entry.pixelH===baseMesh.userData.pixelHeight){
+      entry.group.position.set(0,0,0.002);
+    } else { alert('픽셀 크기 불일치'); }
+  });
+
+  const removeBtn=document.createElement('button'); removeBtn.textContent='Remove'; removeBtn.className='ghost';
+  removeBtn.addEventListener('click', ()=> removePiece(entry.id));
+
+  btns.appendChild(upBtn); btns.appendChild(downBtn); btns.appendChild(alignBtn); btns.appendChild(removeBtn);
+
+  div.appendChild(order); div.appendChild(img); div.appendChild(meta); div.appendChild(btns);
+  piecesListEl.appendChild(div);
+}
+
+function refreshOrderBadges(){
+  pieces.forEach((p,i)=>{
+    const row=document.getElementById('piece-'+p.id);
+    const badge=row?.querySelector('.orderBadge');
+    if(badge) badge.textContent=String(i+1);
+    // z-sort compact
+    if(p.group) p.group.position.z = 0.001 + i*0.0004;
+  });
+}
+
+function movePiece(id, dir){
+  const idx=pieces.findIndex(p=>p.id===id);
+  const j=idx+dir;
+  if(idx<0 || j<0 || j>=pieces.length) return;
+  [pieces[idx], pieces[j]] = [pieces[j], pieces[idx]];
+
+  // DOM 재정렬
+  const nodeA = document.getElementById('piece-'+pieces[j].id);
+  const nodeB = document.getElementById('piece-'+pieces[idx].id);
+  if(nodeA && nodeB){
+    if(dir<0){ piecesListEl.insertBefore(nodeA, nodeB); }
+    else{ piecesListEl.insertBefore(nodeB, nodeA); }
+  }
+  refreshOrderBadges();
+}
+
+function removePiece(id){
+  const idx=pieces.findIndex(p=>p.id===id);
+  if(idx===-1) return;
+  const e=pieces[idx];
+  scene.remove(e.group);
+  try{ e.texture?.dispose(); }catch(ex){}
+  if(e.extrudeMesh && e.extrudeMesh.geometry) e.extrudeMesh.geometry.dispose();
+  if(e.frontPlane && e.frontPlane.geometry) e.frontPlane.geometry.dispose();
+  pieces.splice(idx,1);
+  const el=document.getElementById('piece-'+id); if(el) el.remove();
+  refreshOrderBadges();
+}
+
+/* ---------- Pop / Fade ---------- */
+async function popAndFadeEntry(entry){
+  const fadeDur = parseFloat(document.getElementById('fadeDuration').value) || 0.5;
+  const popDepth = parseFloat(document.getElementById('popDepth').value) * (baseMesh ? baseMesh.userData.worldWidth : 1);
+  const group = entry.group; const startZ = group.position.z; const peakZ = startZ + popDepth;
+  const halfMs = fadeDur * 1000;
+
+  entry.frontPlane.material.transparent = true;
+  if(entry.extrudeMesh) entry.extrudeMesh.material.transparent = true;
+  entry.frontPlane.material.opacity = 0;
+  if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = 0;
+
+  const t0 = performance.now();
+  return new Promise(resolve=>{
+    function frame(now){
+      const t = now - t0;
+      if(t < halfMs){
+        const p = t/halfMs; const eased = 1 - Math.pow(1-p,3);
+        group.position.z = THREE.MathUtils.lerp(startZ, peakZ, eased);
+        const op = THREE.MathUtils.lerp(0,1,eased);
+        entry.frontPlane.material.opacity = op;
+        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = op*0.95;
+        requestAnimationFrame(frame);
+      } else if(t < 2*halfMs){
+        const p = (t-halfMs)/halfMs; const eased = 1 - Math.pow(p,3);
+        group.position.z = THREE.MathUtils.lerp(startZ, peakZ, eased);
+        const op = THREE.MathUtils.lerp(0,1,eased);
+        entry.frontPlane.material.opacity = op;
+        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = op*0.95;
+        requestAnimationFrame(frame);
+      } else {
+        group.position.z = startZ;
+        entry.frontPlane.material.opacity = 1;
+        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = 1;
+        resolve();
+      }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+async function startSequence(){
+  if(animRunning) return;
+  if(pieces.length===0){ alert('조각을 먼저 업로드하세요.'); return; }
+  animRunning = true;
+
+  const loop = document.getElementById('seqLoop').checked;
+  const gapSec = parseFloat(document.getElementById('seqInterval').value) || 0.6;
+
+  while(animRunning){
+    for(let i=0;i<pieces.length && animRunning;i++){
+      await popAndFadeEntry(pieces[i]);
+      if(!animRunning) break;
+      await sleep(gapSec*1000);
+    }
+    if(!loop) break;
+  }
+  animRunning = false;
+}
+
+async function startRandomPop(){
+  if(animRunning) return;
+  animRunning = true;
+  while(animRunning){
+    if(pieces.length===0){ await sleep(300); continue; }
+    const sim = Math.random() < 0.18 ? 2 : 1;
+    const chosen=[];
+    for(let i=0;i<sim;i++){ chosen.push(pieces[Math.floor(Math.random()*pieces.length)]); }
+    await Promise.all(chosen.map(e=>popAndFadeEntry(e)));
+    const minI = parseFloat(document.getElementById('minInterval')?.value || 0.6);
+    const delay = minI*1000*(0.6 + Math.random()*1.4);
+    await sleep(delay);
+  }
+}
+
+function stopAll(){ animRunning=false; }
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+function disposeMaterial(m){ try{ if(m.map) m.map.dispose(); m.dispose(); }catch(e){} }
+function onWindowResize(){ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+function cryptoRandomId(){ try{ return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }catch(e){ return String(Date.now()) + Math.random().toString(36).slice(2,8); } }
+
+/* ---------- Wire UI ---------- */
+function hookUI(){
+  const popDepth = document.getElementById('popDepth');
+  const popDepthVal = document.getElementById('popDepthVal');
+  popDepth.addEventListener('input', ()=> popDepthVal.textContent = (+popDepth.value).toFixed(2));
+
+  const contourScale = document.getElementById('contourScale');
+  const contourScaleVal = document.getElementById('contourScaleVal');
+  contourScale.addEventListener('input', ()=> contourScaleVal.textContent = contourScale.value);
+
+  const fadeDuration = document.getElementById('fadeDuration');
+  const fadeDurationVal = document.getElementById('fadeDurationVal');
+  fadeDuration.addEventListener('input', ()=> fadeDurationVal.textContent = (+fadeDuration.value).toFixed(2)+'s');
+
+  const seqInterval = document.getElementById('seqInterval');
+  const seqIntervalVal = document.getElementById('seqIntervalVal');
+  seqInterval.addEventListener('input', ()=> seqIntervalVal.textContent = (+seqInterval.value).toFixed(2)+'s');
+
+  const minInterval = document.getElementById('minInterval');
+  const minIntervalVal = document.getElementById('minIntervalVal');
+  minInterval.addEventListener('input', ()=> minIntervalVal.textContent = (+minInterval.value).toFixed(2)+'s');
+
+  document.getElementById('baseFile').addEventListener('change', async (e)=>{ const f=e.target.files && e.target.files[0]; if(!f) return; await setBaseImage(f); e.target.value=''; });
+  document.getElementById('piecesFiles').addEventListener('change', async (e)=>{
+    const list = Array.from(e.target.files || []);
+    for(const f of list){ if(pieces.length>=20){ alert('최대 20개 제한'); break; } await addPieceFile(f); }
+    e.target.value='';
+  });
+
+  document.getElementById('btnPlaceAll').addEventListener('click', ()=>{
+    if(!baseMesh) return alert('원본 업로드 필요');
+    const bw=baseMesh.userData.pixelWidth, bh=baseMesh.userData.pixelHeight;
+    for(const p of pieces) if(p.pixelW===bw && p.pixelH===bh) p.group.position.set(0,0,0.002);
+  });
+
+  document.getElementById('btnClear').addEventListener('click', ()=>{
+    for(const p of pieces){ scene.remove(p.group); try{ p.texture?.dispose(); }catch(e){} }
+    pieces=[]; piecesListEl.innerHTML=''; refreshOrderBadges();
+  });
+
+  document.getElementById('btnPlaySeq').addEventListener('click', ()=> startSequence());
+  document.getElementById('btnPlayRandom').addEventListener('click', ()=> startRandomPop());
+  document.getElementById('btnStop').addEventListener('click', ()=> stopAll());
+
+  document.getElementById('enterVrBtn').addEventListener('click', async ()=>{
+    if(renderer.xr.isPresenting){ try{ await xrSession.end(); }catch(e){} return; }
+    if(!navigator.xr || !navigator.xr.requestSession){ alert('WebXR 미지원'); return; }
+    try{
+      const supported = await navigator.xr.isSessionSupported('immersive-vr'); if(!supported){ alert('immersive-vr 미지원'); return; }
+      const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures:['local-floor','bounded-floor'] });
+      xrSession = session; renderer.xr.setSession(session); enterVrBtn.textContent='Exit VR';
+      session.addEventListener('end', ()=>{ enterVrBtn.textContent='Enter VR'; xrSession=null; });
+    }catch(err){ console.error('requestSession failed', err); alert('VR 시작 실패: 콘솔 확인'); }
+  });
+}
+</script>
+</body>
+</html>
