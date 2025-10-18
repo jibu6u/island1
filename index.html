@@ -1,569 +1,485 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>iland6 (fixed+sequence) — VR Puzzle Extrude</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WebXR 원추 이중 헬릭스 + 멀티 미디어 스크린</title>
 <style>
-  :root{ --bg:#0b1220; --panel:#0f1722; --fg:#e6eef6; --muted:#9fb0c7; --accent:#4fc3ff; }
-  html,body{height:100%; margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,Noto Sans;}
-  #ui{position:fixed; left:12px; top:12px; width:380px; max-height:calc(100vh - 24px); overflow:auto; background:var(--panel); border:1px solid #173041; padding:12px; border-radius:10px; box-shadow:0 6px 18px #0009; z-index:60}
-  label{display:block; font-size:13px; color:var(--muted); margin-top:8px}
-  input[type=file]{width:100%}
-  button{margin-top:8px; padding:8px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:600}
-  button.primary{background:linear-gradient(180deg,var(--accent),#0d8fb8); color:#05202b}
-  button.ghost{background:#111827; color:var(--fg); border:1px solid #24323f}
-  .row{display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap}
-  .small{font-size:12px; color:var(--muted)}
-  #canvasContainer{width:100%; height:100vh; overflow:hidden}
-  input[type=range]{width:220px}
-  .sliderRow{display:flex; gap:8px; align-items:center}
-  #piecesList{margin-top:8px; display:flex; flex-direction:column; gap:8px; max-height:260px; overflow:auto; padding:6px; border-radius:6px; background:#081018; border:1px solid #16202a}
-  .pieceRow{display:flex; gap:8px; align-items:center; padding:6px; border-radius:8px; border:1px solid #20303f; background:#0a131c}
-  .thumbSmall{width:56px; height:56px; object-fit:cover; background:#000; border-radius:6px; border:1px solid #20303f}
-  .pieceMeta{flex:1; font-size:12px; color:var(--muted)}
-  .pieceBtns{display:flex; gap:6px; align-items:center}
-  .orderBadge{min-width:22px; text-align:center; font-weight:700; color:#05202b; background:linear-gradient(180deg,var(--accent),#0d8fb8); border-radius:6px; padding:2px 6px}
-  #enterVrBtn{position:fixed; right:12px; bottom:12px; z-index:61; padding:10px 12px; border-radius:8px; background:linear-gradient(180deg,var(--accent),#0d8fb8); color:#05202b; font-weight:700; cursor:pointer; border:none}
-  .webxr-button { position: fixed !important; right:12px !important; bottom:72px !important; z-index:62 !important; }
-  .spacer{flex:1}
+  :root{color-scheme:dark}
+  html,body{margin:0;height:100%;background:#000;font-family:system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
+  #ui{position:fixed;left:12px;top:12px;z-index:20;background:rgba(0,0,0,.72);color:#fff;padding:12px 14px;border-radius:14px;min-width:400px;max-width:min(92vw,640px);backdrop-filter:blur(6px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  #ui h3{margin:0 0 8px;font-size:16px}
+  #ui h4{margin:14px 0 6px;font-size:14px;opacity:.9}
+  #ui label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0}
+  #row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  #ui input[type="number"],#ui input[type="range"],#ui input[type="text"]{width:220px}
+  #status{opacity:.95;font-size:12px}
+  #pointsCanvas{position:fixed;right:12px;top:12px;width:min(36vw,420px);aspect-ratio:1/1;background:#111;border:1px solid #333;border-radius:12px}
+  #hint{position:fixed;right:16px;top:14px;color:#bbb;font-size:12px}
+  button{cursor:pointer;border-radius:10px;padding:8px 12px;border:1px solid #333;background:#181818;color:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  small.mono{font-family:ui-monospace,Consolas,Monaco,monospace;opacity:.9}
+
+  /* 미디어 리스트 */
+  #videoListBox{margin-top:6px;border:1px solid #333;border-radius:10px;padding:8px;background:#0f0f0f}
+  #videoListHead{display:flex;align-items:center;justify-content:space-between}
+  #videoCount{font-size:12px;opacity:.85}
+  #videoList{list-style:none;margin:6px 0 0;padding:0;max-height:220px;overflow:auto}
+  #videoList li{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;border:1px solid #242424;margin:4px 0}
+  #videoList li:hover{background:#141414}
+  #videoList li.active{border-color:#7fb3ff;background:#111a24}
+  .badge{font-size:11px;opacity:.85;border:1px solid #333;border-radius:6px;padding:2px 6px}
+  .truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+  .order{min-width:44px;text-align:center}
+  input[type="checkbox"].selectBox{width:18px;height:18px}
+
+  /* small helpers */
+  .muted{opacity:.8;font-size:12px;color:#9fb6cf}
 </style>
 </head>
 <body>
-  <div id="ui" aria-label="Controls">
-    <h3 style="margin:0 0 6px 0">iland6 — VR Puzzle Extrude (sequence)</h3>
-    <div class="small">최대 20개 조각 업로드 + 순차/랜덤 재생 + VR 버튼</div>
-
-    <label>원본 이미지 업로드</label>
-    <input id="baseFile" type="file" accept="image/*">
-
-    <label>퍼즐 조각 업로드 (최대 20) — 여러 개 선택 가능, 기존 목록에 추가됩니다</label>
-    <input id="piecesFiles" type="file" accept="image/*" multiple>
-
-    <div class="row">
-      <button id="btnPlaceAll" class="ghost">자동 정렬</button>
-      <button id="btnClear" class="ghost">조각 모두 삭제</button>
-      <div class="spacer"></div>
-      <div class="small">업로드된 조각 (최대 20)</div>
-    </div>
-
-    <div id="piecesList" aria-live="polite"></div>
-
-    <label>Extrusion / Fade 설정</label>
-    <div class="sliderRow">
-      <div class="small">총 깊이 (world units)</div>
-      <input id="popDepth" type="range" min="0.02" max="1.2" step="0.01" value="0.14">
-      <div id="popDepthVal" class="small">0.14</div>
-    </div>
-
-    <div class="sliderRow">
-      <div class="small">Contour 샘플 스케일</div>
-      <input id="contourScale" type="range" min="32" max="512" step="8" value="256">
-      <div id="contourScaleVal" class="small">256</div>
-    </div>
-
-    <div class="sliderRow">
-      <div class="small">Fade duration (초)</div>
-      <input id="fadeDuration" type="range" min="0.1" max="2.5" step="0.05" value="0.5">
-      <div id="fadeDurationVal" class="small">0.50s</div>
-    </div>
-
-    <label>재생 옵션</label>
-    <div class="row">
-      <button id="btnPlaySeq" class="primary">Play Sequence</button>
-      <label class="small" style="display:flex; align-items:center; gap:6px; margin:0 6px">
-        <input id="seqLoop" type="checkbox" checked> Loop
-      </label>
-      <div class="sliderRow" style="margin-left:4px">
-        <div class="small">Interval(초)</div>
-        <input id="seqInterval" type="range" min="0.1" max="5" step="0.1" value="0.6">
-        <div id="seqIntervalVal" class="small">0.60s</div>
-      </div>
-    </div>
-
-    <div class="row">
-      <button id="btnPlayRandom" class="ghost">Play Random</button>
-      <div class="sliderRow" style="margin-left:4px">
-        <div class="small">Random 최소 간격(초)</div>
-        <input id="minInterval" type="range" min="0.1" max="5" step="0.1" value="0.6">
-        <div id="minIntervalVal" class="small">0.60s</div>
-      </div>
-    </div>
-
-    <div class="row">
-      <button id="btnStop" class="ghost">Stop</button>
-    </div>
-
-    <div class="small" style="margin-top:10px">테스트 시 콘솔 오류가 있으면 그대로 복사해서 보내 주세요 (DevTools → Console).</div>
+<div id="ui">
+  <h3>WebXR 원추 이중 헬릭스</h3>
+  <div id="row">
+    <button id="startBtn">시작</button>
+    <button id="stopBtn">중지</button>
+    <button id="enterVR">VR 시작</button>
   </div>
 
-  <button id="enterVrBtn">Enter VR</button>
-  <div id="canvasContainer"></div>
+  <label>라인 총 수(생성 후보) <input id="pool" type="number" min="200" max="4000" step="50" value="1200"></label>
+  <label>선택 수(A+B) <input id="pick" type="number" min="100" max="1200" step="10" value="200"></label>
+  <label>기본 반경(px) <input id="rangeR" type="range" min="60" max="900" step="5" value="300"></label>
+  <label>높이(m) <input id="height" type="range" min="2" max="8" step="0.1" value="4.0"></label>
+  <label>회전 속도 <input id="spin" type="range" min="0.0" max="8" step="0.1" value="2.4"></label>
+  <label>꼬임 주기 <input id="twist" type="range" min="80" max="1600" step="10" value="520"></label>
+  <label>기울기 오프셋(m) <input id="tilt" type="range" min="0.00" max="0.60" step="0.01" value="0.22"></label>
+  <label>색상 부드러움 <input id="smoothAlpha" type="range" min="0.01" max="0.5" step="0.01" value="0.14"></label>
+
+  <h4>VR 스크린(미디어) — 최대 10개 관리 · 선택 재생</h4>
+  <div id="row">
+    <button id="screenToggle">스크린 켜기</button>
+    <button id="loadSample">사막 샘플 추가</button>
+  </div>
+
+  <label>미디어 파일(이미지/비디오, 여러 개 선택 가능)
+    <input id="desertFiles" type="file" accept="video/*,image/*" multiple>
+  </label>
+
+  <div id="row" style="gap:6px">
+    <input id="desertUrl" type="text" placeholder="https://예시-사막.mp4 또는 이미지.jpg" />
+    <button id="addUrl">목록에 추가</button>
+  </div>
+
+  <div id="videoListBox">
+    <div id="videoListHead">
+      <div><strong>업로드/추가 목록</strong></div>
+      <div id="videoCount">0 / 10</div>
+    </div>
+
+    <ul id="videoList"></ul>
+
+    <div id="row" style="margin-top:8px">
+      <button id="prevBtn">이전</button>
+      <button id="nextBtn">다음</button>
+      <button id="playSelectedBtn">선택 재생</button>
+      <button id="clearSelectedBtn">선택 초기화</button>
+      <span id="nowPlaying" style="font-size:12px;opacity:.85"></span>
+    </div>
+  </div>
+
+  <h4>슬라이드/재생 타이밍</h4>
+  <label>view (각 이미지/비디오를 보여주는 시간, 초)
+    <input id="viewDuration" type="range" min="0.5" max="20" step="0.1" value="3.0">
+    <span id="viewVal" class="muted">3.0s</span>
+  </label>
+  <label>interval (다음 항목이 나오기 전 쉬는 시간, 초)
+    <input id="intervalDuration" type="range" min="0" max="10" step="0.1" value="1.0">
+    <span id="intervalVal" class="muted">1.0s</span>
+  </label>
+
+  <label>face in/out (페이드 인/아웃 시간, 초)
+    <input id="faceFadeDuration" type="range" min="0" max="2.0" step="0.05" value="0.50">
+    <span id="faceFadeVal" class="muted">0.50s</span>
+  </label>
+
+  <label>스크린 거리(m) <input id="screenDist" type="range" min="3" max="30" step="0.5" value="10"></label>
+  <label>스크린 폭(m, 16:9) <input id="screenWidth" type="range" min="4" max="24" step="0.5" value="12"></label>
+  <label>음소거 <input id="mute" type="checkbox" checked></label>
+
+  <div id="status">상태: 오른쪽 패널에서 점 7개를 찍어 시드를 만드세요.</div>
+  <div style="margin-top:6px"><small class="mono">팁: 체크박스로 여러 개 선택 후 <strong>선택 재생</strong>을 누르면 선택한 순서대로 재생됩니다. 항목명을 클릭하면 즉시 해당 미디어만 재생됩니다.</small></div>
+</div>
+
+<canvas id="pointsCanvas"></canvas>
+<div id="hint">점 패널 — 클릭/터치(7개). VR에선 정면 보드 찍기</div>
 
 <script type="module">
-import * as THREE from 'https://unpkg.com/three@0.150.0/build/three.module.js';
-import { OrbitControls } from 'https://unpkg.com/three@0.150.0/examples/jsm/controls/OrbitControls.js';
-import { VRButton } from 'https://unpkg.com/three@0.150.0/examples/jsm/webxr/VRButton.js';
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { VRButton } from "https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js";
 
-const container = document.getElementById('canvasContainer');
-const piecesListEl = document.getElementById('piecesList');
-const enterVrBtn = document.getElementById('enterVrBtn');
+/* =========================
+   UI 참조
+========================= */
+const ui = {
+  start: document.getElementById('startBtn'),
+  stop: document.getElementById('stopBtn'),
+  enterVR: document.getElementById('enterVR'),
+  pool: document.getElementById('pool'),
+  pick: document.getElementById('pick'),
+  rangeR: document.getElementById('rangeR'),
+  height: document.getElementById('height'),
+  spin: document.getElementById('spin'),
+  twist: document.getElementById('twist'),
+  tilt: document.getElementById('tilt'),
+  smoothAlpha: document.getElementById('smoothAlpha'),
+  status: document.getElementById('status'),
+  screenToggle: document.getElementById('screenToggle'),
+  loadSample: document.getElementById('loadSample'),
+  desertFiles: document.getElementById('desertFiles'),
+  desertUrl: document.getElementById('desertUrl'),
+  addUrl: document.getElementById('addUrl'),
+  screenDist: document.getElementById('screenDist'),
+  screenWidth: document.getElementById('screenWidth'),
+  mute: document.getElementById('mute'),
+  videoList: document.getElementById('videoList'),
+  videoCount: document.getElementById('videoCount'),
+  nowPlaying: document.getElementById('nowPlaying'),
+  prevBtn: document.getElementById('prevBtn'),
+  nextBtn: document.getElementById('nextBtn'),
+  playSelectedBtn: document.getElementById('playSelectedBtn'),
+  clearSelectedBtn: document.getElementById('clearSelectedBtn'),
+  viewDuration: document.getElementById('viewDuration'),
+  intervalDuration: document.getElementById('intervalDuration'),
+  viewVal: document.getElementById('viewVal'),
+  intervalVal: document.getElementById('intervalVal'),
+  faceFadeDuration: document.getElementById('faceFadeDuration'),
+  faceFadeVal: document.getElementById('faceFadeVal')
+};
 
-let renderer, scene, camera, controls;
-let baseMesh = null;
-/** pieces: [{id, group, frontPlane, extrudeMesh, texture, pixelW, pixelH, filename, depthWorld, thumbURL}] */
-let pieces = [];
-let animRunning = false;
-let xrSession = null;
+/* =========================
+   점 7개 → 시드
+========================= */
+// (same as earlier) ...
+const pCanvas = document.getElementById('pointsCanvas');
+const pCtx = pCanvas.getContext('2d');
+let P_W = 360, P_H = 360; let points = [];
+function resizePointCanvas(){ const rect = pCanvas.getBoundingClientRect(); const dpr = Math.max(1, window.devicePixelRatio || 1); pCanvas.width = Math.floor(rect.width * dpr); pCanvas.height = Math.floor(rect.height * dpr); P_W = pCanvas.width; P_H = pCanvas.height; drawPoints(); }
+function drawPoints(){ pCtx.fillStyle = '#0d0d0d'; pCtx.fillRect(0,0,P_W,P_H); pCtx.strokeStyle = '#1b1b1b'; pCtx.lineWidth = 1; for(let i=0;i<=10;i++){ const x=(P_W/10)*i,y=(P_H/10)*i; pCtx.beginPath(); pCtx.moveTo(x,0); pCtx.lineTo(x,P_H); pCtx.stroke(); pCtx.beginPath(); pCtx.moveTo(0,y); pCtx.lineTo(P_W,y); pCtx.stroke(); } if(points.length){ pCtx.fillStyle = '#ffee66'; for(const p of points){ pCtx.beginPath(); pCtx.arc(p.x,p.y,8,0,Math.PI*2); pCtx.fill(); } pCtx.strokeStyle = '#ffeb3b'; pCtx.lineWidth = 3; pCtx.beginPath(); pCtx.moveTo(points[0].x,points[0].y); for(let i=1;i<points.length;i++) pCtx.lineTo(points[i].x,points[i].y); if(points.length===7) pCtx.lineTo(points[0].x,points[0].y); pCtx.stroke(); } }
+function addPointXY(clientX,clientY){ if(points.length>=7) return; const rect = pCanvas.getBoundingClientRect(); const dpr = Math.max(1,window.devicePixelRatio||1); const x = (clientX - rect.left) * dpr; const y = (clientY - rect.top) * dpr; if(x<0||y<0||x>rect.width*dpr||y>rect.height*dpr) return; points.push({x,y}); drawPoints(); ui.status.textContent = `상태: 점 ${points.length}/7`; }
+function handlePointer(e){ if(e.type==='pointerdown'||e.type==='mousedown'){ addPointXY(e.clientX,e.clientY); } else if(e.type==='touchstart'){ const t=e.changedTouches&&e.changedTouches[0]; if(t) addPointXY(t.clientX,t.clientY); } }
+pCanvas.addEventListener('pointerdown', handlePointer, {passive:true});
+pCanvas.addEventListener('mousedown', handlePointer, {passive:true});
+pCanvas.addEventListener('touchstart', e=>{ e.preventDefault(); handlePointer(e); }, {passive:false});
+pCanvas.addEventListener('dblclick', ()=>{ points=[]; drawPoints(); ui.status.textContent='상태: 점 0/7'; });
+window.addEventListener('resize', resizePointCanvas); resizePointCanvas();
 
-initThree();
-hookUI();
-checkWebXRAvailability();
+/* =========================
+   RNG
+========================= */
+function computeSeed(){ let s=0; points.forEach((p,i)=>{ s ^= ((p.x+p.y)|0) << (i%31); }); return (s>>>0) || 0x9e3779b9; }
+function mulberry32(a){ return function(){ let t=a+=0x6D2B79F5; t=Math.imul(t^(t>>>15), t|1); t ^= t + Math.imul(t^(t>>>7), t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
+let rng = mulberry32(0x1234abcd);
 
-/* ---------- Three init ---------- */
-function initThree(){
-  renderer = new THREE.WebGLRenderer({ antialias:true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.xr.enabled = true;
-  container.appendChild(renderer.domElement);
+/* =========================
+   Three.js / WebXR 초기화
+========================= */
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
+camera.position.set(0,1.6,2.2);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.MeshBasicMaterial({color:0x080808, transparent:true, opacity:0.9, side:THREE.DoubleSide}));
+floor.rotation.x = -Math.PI/2; floor.position.y = 0; scene.add(floor);
+const light = new THREE.AmbientLight(0xffffff, 0.9); scene.add(light);
 
-  try {
-    const btn = VRButton.createButton(renderer);
-    btn.classList.add('webxr-button');
-    document.body.appendChild(btn);
-  } catch(e){ console.warn('VRButton not created:', e); }
+// VR 버튼
+ui.enterVR.addEventListener('click', () => {
+  try { const btn = VRButton.createButton(renderer); btn.style.display = 'none'; document.body.appendChild(btn); btn.click(); }
+  catch (e) { console.warn('VRButton not available', e); }
+});
 
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0d10);
+/* =========================
+   스크린(Plane)과 미디어 관리
+========================= */
+let screenMesh = null;
+let currentTexture = null;
+const videoEl = document.createElement('video');
+videoEl.crossOrigin = "anonymous";
+videoEl.playsInline = true;
+videoEl.loop = false;
+videoEl.muted = ui.mute.checked;
 
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 2000);
-  camera.position.set(0,0,1.2);
+const MAX_ITEMS = 10;
+const mediaItems = [];
+let playingIndex = -1;
+let selectionOrder = [];
+let isPlayingSequence = false;
 
-  controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0,0,0);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.07;
+/* small util */
+function sleep(ms){ return new Promise(resolve=>setTimeout(resolve, ms)); }
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x222244, 0.9); scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(0.5,1,0.5); scene.add(dir);
+function updateNowPlayingLabel(){ ui.nowPlaying.textContent = playingIndex >= 0 && mediaItems[playingIndex] ? `현재: ${mediaItems[playingIndex].name}` : ''; }
+function ensureScreen(){ const dist = Number(ui.screenDist.value) || 10; const width = Number(ui.screenWidth.value) || 12; const height = width * 9/16; if(!screenMesh){ const geo = new THREE.PlaneGeometry(width, height); const mat = new THREE.MeshBasicMaterial({color:0xffffff, side:THREE.FrontSide, transparent:true, opacity:1}); screenMesh = new THREE.Mesh(geo, mat); screenMesh.position.set(0, 1.6, -dist); scene.add(screenMesh); } else { screenMesh.geometry.dispose(); screenMesh.geometry = new THREE.PlaneGeometry(width, height); screenMesh.position.z = -dist; } screenMesh.visible = true; ui.screenToggle.textContent = "스크린 끄기"; }
 
-  window.addEventListener('resize', onWindowResize);
-  renderer.setAnimationLoop(()=>{ controls.update(); renderer.render(scene, camera); });
+async function createTextureFromImageFile(file){
+  try{ const bitmap = await createImageBitmap(file); const tex = new THREE.CanvasTexture(bitmap); tex.encoding = THREE.sRGBEncoding; tex.needsUpdate = true; return tex; }
+  catch(e){ return new Promise((resolve, reject) => { const img = new Image(); img.crossOrigin = "anonymous"; img.onload = () => { const tex = new THREE.Texture(img); tex.needsUpdate = true; resolve(tex); }; img.onerror = reject; img.src = URL.createObjectURL(file); }); }
 }
 
-async function checkWebXRAvailability(){
-  if(navigator.xr && navigator.xr.isSessionSupported){
-    try{
-      const supported = await navigator.xr.isSessionSupported('immersive-vr');
-      enterVrBtn.disabled = !supported;
-      if(!supported) console.info('WebXR immersive-vr not supported on this device/browser.');
-    }catch(e){ enterVrBtn.disabled = true; console.warn('XR check failed', e); }
-  } else { enterVrBtn.disabled = true; console.info('WebXR API not available.'); }
-}
-
-/* ---------- Image helpers ---------- */
-async function loadImageBitmap(file){
-  try { return await createImageBitmap(file); }
-  catch(e){
-    return new Promise((resolve,reject)=>{
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = ()=> resolve(createImageBitmap(img));
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
-  }
-}
-
-async function setBaseImage(file){
-  try{
-    const bmp = await loadImageBitmap(file);
-    if(baseMesh){
-      scene.remove(baseMesh);
-      disposeMaterial(baseMesh.material);
-      baseMesh.geometry.dispose();
-      baseMesh = null;
-    }
-    const tex = new THREE.CanvasTexture(bmp); tex.encoding = THREE.sRGBEncoding; tex.needsUpdate = true;
-    const W = bmp.width, H = bmp.height;
-    const worldLong = 1.6;
-    const scale = worldLong / Math.max(W,H);
-    const geo = new THREE.PlaneGeometry(W*scale, H*scale);
-    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness:0.85, metalness:0.0, side: THREE.DoubleSide });
-    baseMesh = new THREE.Mesh(geo, mat);
-    baseMesh.userData = { pixelWidth: W, pixelHeight: H, worldWidth: W*scale, worldHeight: H*scale, scale };
-    scene.add(baseMesh);
-    controls.target.set(0,0,0);
-    const fitZ = Math.max(W*scale, H*scale) / Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
-    camera.position.set(0,0, Math.max(0.8, fitZ*0.7));
-    controls.update();
-    console.log('Base set', file.name, W, H);
-  }catch(err){ console.error('setBaseImage error', err); alert('원본 이미지 로드 실패 — 콘솔을 확인하세요.'); }
-}
-
-async function addPieceFile(file){
-  if(pieces.length >= 20){ alert('최대 20개 조각입니다. 일부를 삭제하세요.'); return; }
-  console.log('addPieceFile:', file.name);
-  try{
-    const bmp = await loadImageBitmap(file);
-    const tex = new THREE.CanvasTexture(bmp); tex.encoding = THREE.sRGBEncoding; tex.needsUpdate = true;
-
-    // world size (원본 기준 정렬 시 같은 픽셀 크기면 전체에 딱 맞게)
-    let worldW = 0.5, worldH = 0.5;
-    if(baseMesh){
-      const bpw = baseMesh.userData.pixelWidth, bph = baseMesh.userData.pixelHeight;
-      worldW = (bmp.width / bpw) * baseMesh.userData.worldWidth;
-      worldH = (bmp.height / bph) * baseMesh.userData.worldHeight;
-    } else {
-      const long = Math.max(bmp.width, bmp.height), s = 1.0/long;
-      worldW = bmp.width * s; worldH = bmp.height * s;
-    }
-
-    const contourScale = parseInt(document.getElementById('contourScale').value,10) || 256;
-    const maskInfo = alphaMaskToContour(bmp, contourScale);
-
-    let extrudeMesh = null;
-    let depthWorld = 0;
-    if(maskInfo && maskInfo.contours.length){
-      let main = maskInfo.contours[0];
-      let maxA = Math.abs(polygonArea(main));
-      for(const c of maskInfo.contours){ const a = Math.abs(polygonArea(c)); if(a>maxA){ maxA=a; main=c; } }
-      const simplified = simplifyRDP(main, 2.0);
-      const pxW = bmp.width, pxH = bmp.height;
-      const pxToWorld = baseMesh ? baseMesh.userData.scale : (Math.max(worldW, worldH) / Math.max(pxW, pxH));
-      const pts = simplified.map(([px,py])=> new THREE.Vector2((px-pxW/2)*pxToWorld, -(py-pxH/2)*pxToWorld));
-      const shape = new THREE.Shape(pts);
-      depthWorld = parseFloat(document.getElementById('popDepth').value) * (baseMesh ? baseMesh.userData.worldWidth : 1);
-      const extrudeSettings = { depth: depthWorld, bevelEnabled:false, curveSegments: Math.max(1, Math.floor(pts.length/8)) };
-      const extrudeGeo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-      extrudeMesh = new THREE.Mesh(extrudeGeo, new THREE.MeshStandardMaterial({ color:0x111111, roughness:0.95 }));
-    } else { console.warn('No contour found for', file.name); }
-
-    const planeGeo = new THREE.PlaneGeometry(worldW, worldH);
-    const frontMat = new THREE.MeshStandardMaterial({ map: tex, transparent:true, alphaTest:0.02, side: THREE.DoubleSide });
-    const frontPlane = new THREE.Mesh(planeGeo, frontMat);
-    frontPlane.position.z = 0.001;
-
-    const group = new THREE.Group();
-    if(extrudeMesh) group.add(extrudeMesh);
-    group.add(frontPlane);
-    group.position.set(0,0, 0.001 + pieces.length*0.0004);
-
-    // 썸네일 생성 & 엔트리 등록
-    const thumbURL = makeThumbDataURL(bmp, 128);
-    const entry = { id: cryptoRandomId(), group, frontPlane, extrudeMesh, texture: tex, pixelW: bmp.width, pixelH: bmp.height, filename: file.name, depthWorld, thumbURL };
-    pieces.push(entry);
-    scene.add(group);
-    addPieceListItem(entry);
-    refreshOrderBadges();
-    console.log('piece added:', file.name);
-  }catch(err){ console.error('addPieceFile error', err); alert('조각 처리 중 오류 — 콘솔 확인'); }
-}
-
-/* ---------- marching squares & helpers ---------- */
-function alphaMaskToContour(bitmap, targetSize=256){
-  const srcW = bitmap.width, srcH = bitmap.height;
-  const scale = Math.max(1, Math.max(srcW, srcH) / targetSize);
-  const w = Math.max(8, Math.round(srcW / scale));
-  const h = Math.max(8, Math.round(srcH / scale));
-  const c = document.createElement('canvas'); c.width=w; c.height=h;
-  const ctx = c.getContext('2d'); ctx.clearRect(0,0,w,h);
-  ctx.drawImage(bitmap,0,0,w,h);
-  const img = ctx.getImageData(0,0,w,h).data;
-  const mask = new Uint8Array(w*h);
-  for(let i=0;i<w*h;i++) mask[i] = img[i*4+3] > 127 ? 1 : 0;
-  const contours = marchingSquares(mask, w, h);
-  const scaleBackX = srcW / w, scaleBackY = srcH / h;
-  const contoursScaled = contours.map(poly => poly.map(([x,y]) => [ x * scaleBackX, y * scaleBackY ]));
-  return { width: srcW, height: srcH, maskGrid: mask, contours: contoursScaled };
-}
-function marchingSquares(mask, w, h){
-  const segments=[];
-  for(let y=0;y<h-1;y++){
-    for(let x=0;x<w-1;x++){
-      const i0 = mask[y*w + x] ? 1 : 0;
-      const i1 = mask[y*w + x+1] ? 1 : 0;
-      const i2 = mask[(y+1)*w + x+1] ? 1 : 0;
-      const i3 = mask[(y+1)*w + x] ? 1 : 0;
-      const cell = (i0<<3)|(i1<<2)|(i2<<1)|(i3<<0);
-      const topMid=[x+0.5,y], rightMid=[x+1,y+0.5], bottomMid=[x+0.5,y+1], leftMid=[x,y+0.5];
-      switch(cell){
-        case 1: segments.push([bottomMid,leftMid]); break;
-        case 2: segments.push([rightMid,bottomMid]); break;
-        case 3: segments.push([rightMid,leftMid]); break;
-        case 4: segments.push([topMid,rightMid]); break;
-        case 5: segments.push([topMid,leftMid]); segments.push([bottomMid,rightMid]); break;
-        case 6: segments.push([topMid,bottomMid]); break;
-        case 7: segments.push([topMid,leftMid]); break;
-        case 8: segments.push([leftMid,topMid]); break;
-        case 9: segments.push([bottomMid,topMid]); break;
-        case 10: segments.push([leftMid,rightMid]); segments.push([topMid,bottomMid]); break;
-        case 11: segments.push([rightMid,topMid]); break;
-        case 12: segments.push([leftMid,rightMid]); break;
-        case 13: segments.push([bottomMid,rightMid]); break;
-        case 14: segments.push([leftMid,bottomMid]); break;
-        default: break;
-      }
-    }
-  }
-  const used = new Array(segments.length).fill(false);
-  const contours = [];
-  for(let i=0;i<segments.length;i++){
-    if(used[i]) continue;
-    used[i]=true;
-    let [a,b] = segments[i].map(p=>p.slice());
-    const poly=[a.slice(), b.slice()];
-    let extended=true;
-    while(extended){
-      extended=false;
-      const last = poly[poly.length-1];
-      for(let j=0;j<segments.length;j++){
-        if(used[j]) continue;
-        const [c,d]=segments[j];
-        if(approxEqual(last,c)){ poly.push(d.slice()); used[j]=true; extended=true; break; }
-        if(approxEqual(last,d)){ poly.push(c.slice()); used[j]=true; extended=true; break; }
-      }
-    }
-    extended=true;
-    while(extended){
-      extended=false;
-      const first = poly[0];
-      for(let j=0;j<segments.length;j++){
-        if(used[j]) continue;
-        const [c,d]=segments[j];
-        if(approxEqual(first,d)){ poly.unshift(c.slice()); used[j]=true; extended=true; break; }
-        if(approxEqual(first,c)){ poly.unshift(d.slice()); used[j]=true; extended=true; break; }
-      }
-    }
-    if(poly.length>2){ if(approxEqual(poly[0], poly[poly.length-1])) poly.pop(); contours.push(poly); }
-  }
-  return contours;
-}
-function approxEqual(a,b,eps=1e-6){ return Math.abs(a[0]-b[0])<eps && Math.abs(a[1]-b[1])<eps; }
-function polygonArea(poly){ let a=0; for(let i=0;i<poly.length;i++){ const [x1,y1]=poly[i]; const [x2,y2]=poly[(i+1)%poly.length]; a += (x1*y2 - x2*y1);} return a/2; }
-function simplifyRDP(points, eps){ if(points.length<3) return points.slice(); const info=findFarthest(points); if(info.maxDist>eps){ const r1=simplifyRDP(points.slice(0,info.index+1),eps); const r2=simplifyRDP(points.slice(info.index),eps); return r1.slice(0,r1.length-1).concat(r2);} return [points[0], points[points.length-1]]; function findFarthest(pts){ const s=pts[0], e=pts[pts.length-1]; let max=-1, idx=-1; for(let i=1;i<pts.length-1;i++){ const d=pointLineDistance(pts[i],s,e); if(d>max){max=d;idx=i;} } return {maxDist:max,index:idx}; function pointLineDistance(p,a,b){ const x0=p[0],y0=p[1],x1=a[0],y1=a[1],x2=b[0],y2=b[1]; const num=Math.abs((x2-x1)*(y1-y0) - (x1-x0)*(y2-y1)); const den=Math.hypot(x2-x1,y2-y1)||1; return num/den;} }
-
-/* ---------- UI list helpers ---------- */
-function makeThumbDataURL(bitmap, targetW=128){
-  const sx = targetW;
-  const sy = Math.max(1, Math.round(bitmap.height*(targetW/bitmap.width)));
-  const c=document.createElement('canvas'); c.width=sx; c.height=sy;
-  const ctx=c.getContext('2d'); ctx.clearRect(0,0,sx,sy); ctx.drawImage(bitmap,0,0,sx,sy);
-  return c.toDataURL();
-}
-
-function addPieceListItem(entry){
-  const div=document.createElement('div'); div.className='pieceRow'; div.id='piece-'+entry.id;
-
-  const order=document.createElement('div'); order.className='orderBadge'; order.textContent='—';
-  const img=document.createElement('img'); img.className='thumbSmall'; img.src=entry.thumbURL;
-
-  const meta=document.createElement('div'); meta.className='pieceMeta';
-  meta.innerHTML=`<div style="font-weight:700">${entry.filename}</div><div class="small">${entry.pixelW}×${entry.pixelH}</div>`;
-
-  const btns=document.createElement('div'); btns.className='pieceBtns';
-
-  const upBtn=document.createElement('button'); upBtn.textContent='↑'; upBtn.className='ghost';
-  upBtn.addEventListener('click', ()=> movePiece(entry.id, -1));
-
-  const downBtn=document.createElement('button'); downBtn.textContent='↓'; downBtn.className='ghost';
-  downBtn.addEventListener('click', ()=> movePiece(entry.id, +1));
-
-  const alignBtn=document.createElement('button'); alignBtn.textContent='Align'; alignBtn.className='ghost';
-  alignBtn.addEventListener('click', ()=>{
-    if(!baseMesh) return alert('원본 업로드 필요');
-    if(entry.pixelW===baseMesh.userData.pixelWidth && entry.pixelH===baseMesh.userData.pixelHeight){
-      entry.group.position.set(0,0,0.002);
-    } else { alert('픽셀 크기 불일치'); }
-  });
-
-  const removeBtn=document.createElement('button'); removeBtn.textContent='Remove'; removeBtn.className='ghost';
-  removeBtn.addEventListener('click', ()=> removePiece(entry.id));
-
-  btns.appendChild(upBtn); btns.appendChild(downBtn); btns.appendChild(alignBtn); btns.appendChild(removeBtn);
-
-  div.appendChild(order); div.appendChild(img); div.appendChild(meta); div.appendChild(btns);
-  piecesListEl.appendChild(div);
-}
-
-function refreshOrderBadges(){
-  pieces.forEach((p,i)=>{
-    const row=document.getElementById('piece-'+p.id);
-    const badge=row?.querySelector('.orderBadge');
-    if(badge) badge.textContent=String(i+1);
-    // z-sort compact
-    if(p.group) p.group.position.z = 0.001 + i*0.0004;
-  });
-}
-
-function movePiece(id, dir){
-  const idx=pieces.findIndex(p=>p.id===id);
-  const j=idx+dir;
-  if(idx<0 || j<0 || j>=pieces.length) return;
-  [pieces[idx], pieces[j]] = [pieces[j], pieces[idx]];
-
-  // DOM 재정렬
-  const nodeA = document.getElementById('piece-'+pieces[j].id);
-  const nodeB = document.getElementById('piece-'+pieces[idx].id);
-  if(nodeA && nodeB){
-    if(dir<0){ piecesListEl.insertBefore(nodeA, nodeB); }
-    else{ piecesListEl.insertBefore(nodeB, nodeA); }
-  }
-  refreshOrderBadges();
-}
-
-function removePiece(id){
-  const idx=pieces.findIndex(p=>p.id===id);
-  if(idx===-1) return;
-  const e=pieces[idx];
-  scene.remove(e.group);
-  try{ e.texture?.dispose(); }catch(ex){}
-  if(e.extrudeMesh && e.extrudeMesh.geometry) e.extrudeMesh.geometry.dispose();
-  if(e.frontPlane && e.frontPlane.geometry) e.frontPlane.geometry.dispose();
-  pieces.splice(idx,1);
-  const el=document.getElementById('piece-'+id); if(el) el.remove();
-  refreshOrderBadges();
-}
-
-/* ---------- Pop / Fade ---------- */
-async function popAndFadeEntry(entry){
-  const fadeDur = parseFloat(document.getElementById('fadeDuration').value) || 0.5;
-  const popDepth = parseFloat(document.getElementById('popDepth').value) * (baseMesh ? baseMesh.userData.worldWidth : 1);
-  const group = entry.group; const startZ = group.position.z; const peakZ = startZ + popDepth;
-  const halfMs = fadeDur * 1000;
-
-  entry.frontPlane.material.transparent = true;
-  if(entry.extrudeMesh) entry.extrudeMesh.material.transparent = true;
-  entry.frontPlane.material.opacity = 0;
-  if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = 0;
-
-  const t0 = performance.now();
+/* Fade helper */
+function fadeMaterialTo(mat, from, to, duration){
   return new Promise(resolve=>{
+    if(!mat) return resolve();
+    mat.transparent = true;
+    const t0 = performance.now();
     function frame(now){
-      const t = now - t0;
-      if(t < halfMs){
-        const p = t/halfMs; const eased = 1 - Math.pow(1-p,3);
-        group.position.z = THREE.MathUtils.lerp(startZ, peakZ, eased);
-        const op = THREE.MathUtils.lerp(0,1,eased);
-        entry.frontPlane.material.opacity = op;
-        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = op*0.95;
-        requestAnimationFrame(frame);
-      } else if(t < 2*halfMs){
-        const p = (t-halfMs)/halfMs; const eased = 1 - Math.pow(p,3);
-        group.position.z = THREE.MathUtils.lerp(startZ, peakZ, eased);
-        const op = THREE.MathUtils.lerp(0,1,eased);
-        entry.frontPlane.material.opacity = op;
-        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = op*0.95;
-        requestAnimationFrame(frame);
-      } else {
-        group.position.z = startZ;
-        entry.frontPlane.material.opacity = 1;
-        if(entry.extrudeMesh) entry.extrudeMesh.material.opacity = 1;
-        resolve();
-      }
+      const t = (now - t0) / Math.max(1, duration*1000);
+      const clamped = Math.min(1, Math.max(0, t));
+      mat.opacity = from + (to - from) * clamped;
+      mat.needsUpdate = true;
+      if(clamped >= 1) resolve();
+      else requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   });
 }
 
-async function startSequence(){
-  if(animRunning) return;
-  if(pieces.length===0){ alert('조각을 먼저 업로드하세요.'); return; }
-  animRunning = true;
+/* 파일 입력 */
+ui.desertFiles.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  const remain = MAX_ITEMS - mediaItems.length;
+  if(remain <= 0){ alert(`최대 ${MAX_ITEMS}개까지만 추가할 수 있습니다.`); e.target.value=''; return; }
+  const toAdd = files.slice(0, remain);
+  for(const f of toAdd){
+    const type = (f.type || '').toLowerCase();
+    if(type.startsWith('image/')){
+      try{ const tex = await createTextureFromImageFile(f); const url = URL.createObjectURL(f); mediaItems.push({ name: f.name, url, type: 'image', texture: tex }); renderMediaList(); }
+      catch(err){ console.error('image create failed', err); }
+    } else if(type.startsWith('video/')){ const url = URL.createObjectURL(f); mediaItems.push({ name: f.name, url, type: 'video' }); renderMediaList(); }
+    else console.warn('unsupported file type', f.type);
+  }
+  if(playingIndex < 0 && mediaItems.length > 0) playSingleAt(0);
+  e.target.value = '';
+});
 
-  const loop = document.getElementById('seqLoop').checked;
-  const gapSec = parseFloat(document.getElementById('seqInterval').value) || 0.6;
+ui.addUrl.addEventListener('click', async ()=>{
+  const url = (ui.desertUrl.value || '').trim(); if(!url){ alert('URL을 입력하세요.'); return; }
+  const lower = url.toLowerCase(); const name = url.split('/').pop() || url;
+  if(mediaItems.length >= MAX_ITEMS){ alert(`최대 ${MAX_ITEMS}개까지만 추가할 수 있습니다.`); return; }
+  if(lower.match(/\.(png|jpe?g|gif|webp|bmp)(\?.*)?$/)){
+    try{ const img = new Image(); img.crossOrigin = "anonymous"; img.src = url; await img.decode().catch(()=>{}); const tex = new THREE.Texture(img); tex.needsUpdate = true; mediaItems.push({ name, url, type: 'image', texture: tex }); renderMediaList(); }
+    catch(err){ console.warn('image url load failed', err); alert('이미지 URL을 불러오지 못했습니다 (CORS 또는 URL 문제).'); }
+  } else { mediaItems.push({ name, url, type: 'video' }); renderMediaList(); }
+  ui.desertUrl.value = '';
+});
 
-  while(animRunning){
-    for(let i=0;i<pieces.length && animRunning;i++){
-      await popAndFadeEntry(pieces[i]);
-      if(!animRunning) break;
-      await sleep(gapSec*1000);
+ui.loadSample.addEventListener('click', ()=>{ const sample = "https://cdn.coverr.co/videos/coverr-sand-dunes-1619/1080p.mp4"; if(mediaItems.length < MAX_ITEMS){ mediaItems.push({ name:'사막 샘플', url:sample, type:'video', source:'sample' }); renderMediaList(); } else alert('목록이 가득 찼습니다.'); });
+
+function renderMediaList(){ ui.videoList.innerHTML = ''; ui.videoCount.textContent = `${mediaItems.length} / ${MAX_ITEMS}`; const orderMap = new Map(); selectionOrder.forEach((idx, i)=> orderMap.set(idx, i+1));
+  mediaItems.forEach((m, idx)=>{ const li = document.createElement('li'); li.dataset.index = idx; if(idx === playingIndex) li.classList.add('active'); const chk = document.createElement('input'); chk.type='checkbox'; chk.className='selectBox'; chk.checked = orderMap.has(idx); chk.addEventListener('change', (ev)=> toggleSelect(idx, ev.target.checked)); const orderSpan = document.createElement('span'); orderSpan.className='badge order'; const ord=orderMap.get(idx); orderSpan.textContent = ord? `선택${ord}` : ''; const badge = document.createElement('span'); badge.className='badge'; badge.textContent = idx===playingIndex? '▶ 재생중' : (m.type==='video'?'비디오':'이미지'); const nameSpan = document.createElement('span'); nameSpan.className='truncate'; nameSpan.title = m.name; nameSpan.textContent = m.name; nameSpan.style.cursor='pointer'; nameSpan.addEventListener('click', ()=> { playSingleAt(idx); }); li.appendChild(chk); li.appendChild(orderSpan); li.appendChild(badge); li.appendChild(nameSpan); ui.videoList.appendChild(li); }); updateNowPlayingLabel(); }
+function toggleSelect(idx, checked){ if(checked){ if(!selectionOrder.includes(idx)) selectionOrder.push(idx); } else { selectionOrder = selectionOrder.filter(i=>i!==idx); } renderMediaList(); }
+
+/* ---- playSingleAt (동기적 페이드 흐름 보장) ---- */
+async function playSingleAt(idx){
+  if(idx<0 || idx>=mediaItems.length) return;
+  stopSequence();
+  playingIndex = idx;
+  const item = mediaItems[idx];
+  ensureScreen();
+  // use face fade from UI but default to 0.5s if not set
+  const fadeDur = parseFloat(ui.faceFadeDuration.value) || 0.5;
+  const mat = screenMesh.material;
+  // ensure opacity defined
+  if(typeof mat.opacity !== 'number') mat.opacity = 1;
+
+  if(item.type === 'image'){
+    if(!item.texture && item.url){
+      try{ const img = new Image(); img.crossOrigin = 'anonymous'; img.src = item.url; await img.decode().catch(()=>{}); item.texture = new THREE.Texture(img); item.texture.needsUpdate = true; }catch(e){ console.warn('image load failed', e); }
     }
-    if(!loop) break;
-  }
-  animRunning = false;
-}
-
-async function startRandomPop(){
-  if(animRunning) return;
-  animRunning = true;
-  while(animRunning){
-    if(pieces.length===0){ await sleep(300); continue; }
-    const sim = Math.random() < 0.18 ? 2 : 1;
-    const chosen=[];
-    for(let i=0;i<sim;i++){ chosen.push(pieces[Math.floor(Math.random()*pieces.length)]); }
-    await Promise.all(chosen.map(e=>popAndFadeEntry(e)));
-    const minI = parseFloat(document.getElementById('minInterval')?.value || 0.6);
-    const delay = minI*1000*(0.6 + Math.random()*1.4);
-    await sleep(delay);
-  }
-}
-
-function stopAll(){ animRunning=false; }
-
-function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
-function disposeMaterial(m){ try{ if(m.map) m.map.dispose(); m.dispose(); }catch(e){} }
-function onWindowResize(){ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
-function cryptoRandomId(){ try{ return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=> (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }catch(e){ return String(Date.now()) + Math.random().toString(36).slice(2,8); } }
-
-/* ---------- Wire UI ---------- */
-function hookUI(){
-  const popDepth = document.getElementById('popDepth');
-  const popDepthVal = document.getElementById('popDepthVal');
-  popDepth.addEventListener('input', ()=> popDepthVal.textContent = (+popDepth.value).toFixed(2));
-
-  const contourScale = document.getElementById('contourScale');
-  const contourScaleVal = document.getElementById('contourScaleVal');
-  contourScale.addEventListener('input', ()=> contourScaleVal.textContent = contourScale.value);
-
-  const fadeDuration = document.getElementById('fadeDuration');
-  const fadeDurationVal = document.getElementById('fadeDurationVal');
-  fadeDuration.addEventListener('input', ()=> fadeDurationVal.textContent = (+fadeDuration.value).toFixed(2)+'s');
-
-  const seqInterval = document.getElementById('seqInterval');
-  const seqIntervalVal = document.getElementById('seqIntervalVal');
-  seqInterval.addEventListener('input', ()=> seqIntervalVal.textContent = (+seqInterval.value).toFixed(2)+'s');
-
-  const minInterval = document.getElementById('minInterval');
-  const minIntervalVal = document.getElementById('minIntervalVal');
-  minInterval.addEventListener('input', ()=> minIntervalVal.textContent = (+minInterval.value).toFixed(2)+'s');
-
-  document.getElementById('baseFile').addEventListener('change', async (e)=>{ const f=e.target.files && e.target.files[0]; if(!f) return; await setBaseImage(f); e.target.value=''; });
-  document.getElementById('piecesFiles').addEventListener('change', async (e)=>{
-    const list = Array.from(e.target.files || []);
-    for(const f of list){ if(pieces.length>=20){ alert('최대 20개 제한'); break; } await addPieceFile(f); }
-    e.target.value='';
-  });
-
-  document.getElementById('btnPlaceAll').addEventListener('click', ()=>{
-    if(!baseMesh) return alert('원본 업로드 필요');
-    const bw=baseMesh.userData.pixelWidth, bh=baseMesh.userData.pixelHeight;
-    for(const p of pieces) if(p.pixelW===bw && p.pixelH===bh) p.group.position.set(0,0,0.002);
-  });
-
-  document.getElementById('btnClear').addEventListener('click', ()=>{
-    for(const p of pieces){ scene.remove(p.group); try{ p.texture?.dispose(); }catch(e){} }
-    pieces=[]; piecesListEl.innerHTML=''; refreshOrderBadges();
-  });
-
-  document.getElementById('btnPlaySeq').addEventListener('click', ()=> startSequence());
-  document.getElementById('btnPlayRandom').addEventListener('click', ()=> startRandomPop());
-  document.getElementById('btnStop').addEventListener('click', ()=> stopAll());
-
-  document.getElementById('enterVrBtn').addEventListener('click', async ()=>{
-    if(renderer.xr.isPresenting){ try{ await xrSession.end(); }catch(e){} return; }
-    if(!navigator.xr || !navigator.xr.requestSession){ alert('WebXR 미지원'); return; }
+    if(item.texture){
+      await fadeMaterialTo(mat, mat.opacity ?? 1, 0, fadeDur);
+      // set new map
+      mat.map = item.texture;
+      mat.needsUpdate = true;
+      await fadeMaterialTo(mat, 0, 1, fadeDur);
+      ui.status.textContent = `상태: 이미지 표시 — ${item.name}`;
+      updateNowPlayingLabel();
+      // For single play, we'll keep the image visible indefinitely (user can navigate manually).
+      // If you prefer auto-hide after a fixed time when single-clicked, uncomment below:
+      // await sleep(5000); await fadeMaterialTo(mat, 1, 0, fadeDur); mat.map = null;
+    } else {
+      ui.status.textContent = '이미지를 불러오지 못했습니다.';
+    }
+  } else if(item.type === 'video'){
     try{
-      const supported = await navigator.xr.isSessionSupported('immersive-vr'); if(!supported){ alert('immersive-vr 미지원'); return; }
-      const session = await navigator.xr.requestSession('immersive-vr', { optionalFeatures:['local-floor','bounded-floor'] });
-      xrSession = session; renderer.xr.setSession(session); enterVrBtn.textContent='Exit VR';
-      session.addEventListener('end', ()=>{ enterVrBtn.textContent='Enter VR'; xrSession=null; });
-    }catch(err){ console.error('requestSession failed', err); alert('VR 시작 실패: 콘솔 확인'); }
-  });
+      videoEl.src = item.url;
+      videoEl.muted = ui.mute.checked;
+      await videoEl.play();
+      const vtex = new THREE.VideoTexture(videoEl);
+      vtex.colorSpace = THREE.SRGBColorSpace;
+      vtex.minFilter = THREE.LinearFilter; vtex.magFilter = THREE.LinearFilter;
+      await fadeMaterialTo(mat, mat.opacity ?? 1, 0, fadeDur);
+      // set video texture
+      mat.map = vtex;
+      mat.needsUpdate = true;
+      await fadeMaterialTo(mat, 0, 1, fadeDur);
+      ui.status.textContent = `상태: 비디오 재생 — ${item.name}`;
+      updateNowPlayingLabel();
+      // stop after viewDuration seconds (UI control) for single play
+      const viewT = parseFloat(ui.viewDuration.value) || 3.0;
+      setTimeout(async () => {
+        try{ videoEl.pause(); }catch(e){}
+        await fadeMaterialTo(mat, mat.opacity ?? 1, 0, fadeDur);
+        // clear map (let GC handle textures)
+        mat.map = null;
+      }, Math.round(viewT*1000));
+    }catch(err){
+      console.warn('video play failed', err);
+      ui.status.textContent = '비디오 재생 실패(권한/CORS/코덱 문제)';
+    }
+  }
+  renderMediaList();
 }
+
+/* ---- startSequenceFromSelection (looping, fixed timing & fade) ---- */
+async function startSequenceFromSelection(){
+  if(selectionOrder.length === 0){ alert('선택된 항목이 없습니다. 체크박스로 항목을 선택하세요.'); return; }
+  stopSequence();
+  isPlayingSequence = true;
+  ui.status.textContent = '상태: 선택 재생 시작';
+  // Respect UI fade control but default to 0.5s
+  const fadeDur = parseFloat(ui.faceFadeDuration.value) || 0.5;
+  // Per-user requirement: images 5s, videos 10s
+  const imageView = 5.0;
+  const videoView = 10.0;
+  const intervalT = parseFloat(ui.intervalDuration.value) || 1.0;
+
+  let loopIndex = 0;
+  // loop until stopped
+  while(isPlayingSequence){
+    // Recompute selectionOrder snapshot to allow dynamic changes
+    const sel = selectionOrder.length ? selectionOrder.slice() : [];
+    if(sel.length === 0) break; // nothing to play anymore
+    const selPos = loopIndex % sel.length;
+    const idx = sel[selPos];
+    // defensive checks
+    if(idx < 0 || idx >= mediaItems.length){ loopIndex++; continue; }
+    playingIndex = idx;
+    const item = mediaItems[idx];
+    renderMediaList();
+    ensureScreen();
+    const mat = screenMesh.material;
+    if(typeof mat.opacity !== 'number') mat.opacity = 1;
+
+    if(item.type === 'image'){
+      // ensure texture
+      if(!item.texture && item.url){
+        try{ const img = new Image(); img.crossOrigin = 'anonymous'; img.src = item.url; await img.decode().catch(()=>{}); item.texture = new THREE.Texture(img); item.texture.needsUpdate = true; }catch(e){ console.warn('image load fail in sequence', e); }
+      }
+      if(item.texture){
+        // fade out current -> set -> fade in
+        await fadeMaterialTo(mat, mat.opacity ?? 1, 0, fadeDur);
+        mat.map = item.texture; mat.needsUpdate = true;
+        await fadeMaterialTo(mat, 0, 1, fadeDur);
+        ui.status.textContent = `상태: 이미지 (${selPos+1}/${sel.length}) — ${item.name}`;
+        updateNowPlayingLabel();
+        // hold for specified time (account for fade durations)
+        const hold = Math.max(0, imageView - 2*fadeDur);
+        await sleep(Math.round(hold*1000));
+        // fade out and clear
+        await fadeMaterialTo(mat, 1, 0, fadeDur);
+        mat.map = null;
+        await sleep(Math.round(intervalT*1000));
+      } else {
+        ui.status.textContent = '이미지 로드 실패, 다음 항목으로...';
+        await sleep(500);
+      }
+    } else if(item.type === 'video'){
+      try{
+        videoEl.src = item.url; videoEl.muted = ui.mute.checked;
+        // attempt play
+        await videoEl.play();
+        const vtex = new THREE.VideoTexture(videoEl);
+        vtex.colorSpace = THREE.SRGBColorSpace;
+        vtex.minFilter = THREE.LinearFilter; vtex.magFilter = THREE.LinearFilter;
+        await fadeMaterialTo(mat, mat.opacity ?? 1, 0, fadeDur);
+        mat.map = vtex; mat.needsUpdate = true;
+        await fadeMaterialTo(mat, 0, 1, fadeDur);
+        ui.status.textContent = `상태: 비디오 (${selPos+1}/${sel.length}) — ${item.name}`;
+        updateNowPlayingLabel();
+        // play for fixed videoView seconds, then stop (per requirement)
+        await sleep(Math.round(videoView * 1000));
+        try{ videoEl.pause(); }catch(e){}
+        await fadeMaterialTo(mat, 1, 0, fadeDur);
+        mat.map = null;
+        await sleep(Math.round(intervalT*1000));
+      }catch(err){
+        console.warn('video play in sequence failed', err);
+        ui.status.textContent = '비디오 재생 실패, 다음 항목으로...';
+        await sleep(500);
+      }
+    }
+    loopIndex++;
+  }
+
+  isPlayingSequence = false;
+  playingIndex = -1;
+  renderMediaList();
+  ui.status.textContent = '상태: 선택 재생 종료';
+}
+
+/* Stop any running sequence */
+function stopSequence(){ isPlayingSequence = false; try{ if(videoEl && !videoEl.paused) videoEl.pause(); }catch(e){} if(screenMesh) screenMesh.material.map = null; playingIndex = -1; renderMediaList(); }
+
+/* UI glue */
+ui.playSelectedBtn.addEventListener('click', ()=> startSequenceFromSelection());
+ui.clearSelectedBtn.addEventListener('click', ()=> { selectionOrder = []; renderMediaList(); });
+ui.prevBtn.addEventListener('click', ()=> { if(mediaItems.length===0) return; let idx = (playingIndex>0? playingIndex-1 : mediaItems.length-1); playSingleAt(idx); });
+ui.nextBtn.addEventListener('click', ()=> { if(mediaItems.length===0) return; let idx = (playingIndex+1)%mediaItems.length; playSingleAt(idx); });
+ui.mute.addEventListener('change', ()=> { videoEl.muted = ui.mute.checked; });
+ui.screenToggle.addEventListener('click', ()=> { if(!screenMesh){ ensureScreen(); return; } screenMesh.visible = !screenMesh.visible; ui.screenToggle.textContent = screenMesh.visible ? "스크린 끄기" : "스크린 켜기"; });
+ui.screenDist.addEventListener('input', ()=> { if(screenMesh) screenMesh.position.z = -Number(ui.screenDist.value); });
+ui.screenWidth.addEventListener('input', ()=> { if(screenMesh){ const w = Number(ui.screenWidth.value); const h = w*9/16; screenMesh.geometry.dispose(); screenMesh.geometry = new THREE.PlaneGeometry(w,h); } });
+
+ui.viewDuration.addEventListener('input', ()=> { ui.viewVal.textContent = parseFloat(ui.viewDuration.value).toFixed(1) + 's'; });
+ui.intervalDuration.addEventListener('input', ()=> { ui.intervalVal.textContent = parseFloat(ui.intervalDuration.value).toFixed(1) + 's'; });
+ui.faceFadeDuration.addEventListener('input', ()=> { ui.faceFadeVal.textContent = parseFloat(ui.faceFadeDuration.value).toFixed(2) + 's'; });
+ui.faceFadeVal.textContent = parseFloat(ui.faceFadeDuration.value).toFixed(2) + 's';
+
+/* Helix logic (kept as previously) */
+const palette = [0x32cd32,0x00ff7f,0x9acd32,0xffff00,0xffd700,0xf0e68c,0x9370db,0x8a2be2,0xba55d3,0x1e90ff,0x87cefa,0xff6347,0xff4500].map(v=>new THREE.Color(v));
+const state = { running:false, segY:220, objsA:[], objsB:[], colNowA:[], colNowB:[], colTgtA:[], colTgtB:[] };
+
+function initHelices(){ for(const o of state.objsA) scene.remove(o); for(const o of state.objsB) scene.remove(o); state.objsA.length=0; state.objsB.length=0; state.colNowA.length=0; state.colNowB.length=0; state.colTgtA.length=0; state.colTgtB.length=0;
+  const seg = state.segY; const geomT = new THREE.BufferGeometry(); geomT.setAttribute('position', new THREE.BufferAttribute(new Float32Array(seg*3), 3));
+  const poolN = Math.max(200, Math.min(4000, Number(ui.pool.value) || 1200)); const pickN = Math.max(100, Math.min(poolN, Number(ui.pick.value) || 200)); const pickHalf = Math.floor(pickN/2);
+  const sd = computeSeed(); rng = mulberry32(sd); ui.status.textContent = `상태: 시드 0x${sd.toString(16)} / 선택 ${pickN}개 (A ${pickHalf}, B ${pickN-pickHalf})`;
+  const chosen = new Set(); while(chosen.size < pickN) chosen.add(Math.floor(rng()*poolN));
+  function newLine(){ const g = geomT.clone(); const m = new THREE.LineBasicMaterial({ vertexColors:false }); const l = new THREE.Line(g,m); scene.add(l); return l; }
+  for(let i=0;i<pickHalf;i++){ const line=newLine(); state.objsA.push(line); const c=palette[Math.floor(rng()*palette.length)].clone(); const t=palette[Math.floor(rng()*palette.length)].clone(); state.colNowA.push(c); state.colTgtA.push(t); }
+  for(let i=pickHalf;i<pickN;i++){ const line=newLine(); state.objsB.push(line); const c=palette[Math.floor(rng()*palette.length)].clone(); const t=palette[Math.floor(rng()*palette.length)].clone(); state.colNowB.push(c); state.colTgtB.push(t); }
+}
+function retargetColors(){ const changeCount = Math.max(1, Math.floor((state.objsA.length + state.objsB.length) * 0.3)); for(let k=0;k<changeCount;k++){ const list = Math.random() < 0.5 ? state.colTgtA : state.colTgtB; const i = Math.floor(Math.random()*list.length); list[i] = palette[Math.floor(Math.random()*palette.length)].clone(); } }
+let colorTimer = null; function startColorTimer(){ if(colorTimer) clearInterval(colorTimer); colorTimer = setInterval(retargetColors, 2200); } function stopColorTimer(){ if(colorTimer){ clearInterval(colorTimer); colorTimer=null; } }
+const clock = new THREE.Clock();
+function animate(){ renderer.setAnimationLoop(render); }
+function render(){ const t = clock.getElapsedTime(); if(state.running) updateHelixLines(t); renderer.render(scene, camera); }
+function updateHelixLines(t){ const seg = state.segY; const stepY = Number(ui.height.value||4.0)/(seg-1); const baseR = (Number(ui.rangeR.value)||300)/300 * 0.9; const spin = Number(ui.spin.value)||2.4; const twist = Number(ui.twist.value)||520; const tilt = Number(ui.tilt.value)||0.22; const smooth = Number(ui.smoothAlpha.value)||0.14;
+  function updateGroup(list, colNow, colTgt, phaseSign){ for(let i=0;i<list.length;i++){ const line=list[i]; colNow[i].lerp(colTgt[i], smooth); line.material.color.copy(colNow[i]); const pos=line.geometry.attributes.position.array; let p=0; const phase0 = i * (Math.PI*2/24) + i*0.0013; for(let s=0;s<seg;s++){ const H = Number(ui.height.value||4.0); const y = -H/2 + s*stepY; const hNorm = (y + H/2) / H; const radius = baseR * Math.pow(1 - hNorm, 0.85); const phase = (y / (twist/1000)) * Math.PI*2 + t*spin*phaseSign + phase0; const x = Math.sin(phase) * radius + (phaseSign>0? +tilt : -tilt); const z = Math.cos(phase) * radius; pos[p++]=x; pos[p++]=1.0 + y; pos[p++]=z; } line.geometry.attributes.position.needsUpdate=true; } }
+  updateGroup(state.objsA, state.colNowA, state.colTgtA, +1); updateGroup(state.objsB, state.colNowB, state.colTgtB, -1);
+}
+
+/* 버튼 */
+ui.start.addEventListener('click', ()=>{ if(points.length !== 7){ alert('점 7개를 먼저 찍어주세요.'); return; } initHelices(); state.running = true; startColorTimer(); });
+ui.stop.addEventListener('click', ()=>{ state.running = false; stopColorTimer(); stopSequence(); ui.status.textContent = '상태: 중지됨. 더블클릭으로 점 초기화 가능'; });
+
+window.addEventListener('resize', ()=>{ camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+animate();
 </script>
 </body>
 </html>
